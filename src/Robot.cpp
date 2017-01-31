@@ -13,32 +13,31 @@
 #include <Joystick.h>
 #include <Solenoid.h>
 #include <DoubleSolenoid.h>
-#include "WPILib.h"
 
 class Robot: public frc::IterativeRobot {
-//	RobotDrive myRobot;
-
 	CANTalon LF_motor;
 	CANTalon LR_motor;
 	CANTalon RF_motor;
 	CANTalon RR_motor;
+	CANTalon shooter_motor;
 	Joystick controller1;
 	AHRS *ahrs;
 	DoubleSolenoid armControl;
+	Joystick controller2;
 
 public:
 	Robot() :
-//		myRobot(1,2,3,4),
 		LF_motor(1),
 		LR_motor(3),
 		RF_motor(2),
 		RR_motor(4),
+		shooter_motor(2),
 		controller1(0),
-		armControl(0, 1)
+		armControl(0, 1),
+		controller2(1)
 
 {
 		ahrs = new AHRS(SPI::Port::kMXP);
-//		myRobot.SetExpiration(0.1);
 }
 	void RobotInit() {
 		chooser.AddDefault(autoNameDefault, autoNameDefault);
@@ -48,16 +47,6 @@ public:
 		LiveWindow::GetInstance()->AddSensor("IMU", "Gyro", ahrs);
 	}
 
-	/*
-	 * This autonomous (along with the chooser code above) shows how to select
-	 * chooser code works with the Java SmartDashboard. If you prefer the
-	 * LabVIEW Dashboard, remove all of the chooser code and uncomment the
-	 * GetString line to get the auto name from the text box below the Gyro.
-	 *
-	 * You can add additional auto modes by adding additional comparisons to the
-	 * if-else structure below with additional strings. If using the
-	 * SendableChooser make sure to add them to the chooser code above as well.
-	 */
 	int stopturn=0;
 	int timr=0;
 	double teleMaxSpeed=0.5;
@@ -88,6 +77,10 @@ public:
 	int iJoystickFast_ = 8; //
 	int iJoystickSlow_ = 7; //
 	int iJoystickArm = 2;
+
+	int iJoystick2A_ = 2;
+	int iJoystick2B_ = 3;
+	double shootSpeed = 0.3;
 	/*
 	int iJoystickOpenGearFlap_ = 0; // 
 	int iJoystickOpenGearFlap_ = 0; // 
@@ -114,6 +107,21 @@ public:
 	// Read Config File
 	void ReadConfigFile() {
 		// Reads in the configuration file and sets all of the variables to defaults
+	}
+
+	// Put robot status variables on the SmartDashboard
+	void DisplayRobotStatus() {
+		double ShooterSpeed;
+		bool shootOK;
+		float CurrentAngle;
+		CurrentAngle = ahrs->GetYaw(); //Getting what angle we are at
+		SmartDashboard::PutNumber(  "CurrentAngle", CurrentAngle);
+
+		ShooterSpeed = shooter_motor.GetSpeed();
+		SmartDashboard::PutNumber(  "Shoot Speed", ShooterSpeed);
+		shootOK = (fabs(ShooterSpeed) - targetSpeed < 0.05);
+		SmartDashboard::PutBoolean( "Target Speed Reached", shootOK);
+
 	}
 
 	// ------------------------------------------------------
@@ -215,7 +223,29 @@ public:
 		// Toggles motor on or off
 	}
 
+	bool isADown=false;
+	bool isBDown=false;
 	void ShooterChangeMotorSpeed() {
+		if (controller2.GetRawButton(iJoystick2A_) && !isADown){
+			shootSpeed = shootSpeed+0.01;
+			isADown=true;
+		}
+		else if(!controller2.GetRawButton(iJoystick2A_) && isADown){
+			isADown=false;
+		}
+		if (controller2.GetRawButton(iJoystick2B_) && !isBDown){
+			shootSpeed = shootSpeed-0.01;
+			isBDown=true;
+		}
+		else if (!controller2.GetRawButton(iJoystick2B_) && isBDown){
+			isBDown=false;
+		}
+		if (shootSpeed>1){
+			shootSpeed=1;
+		}
+		if (shootSpeed<0){
+			shootSpeed=0;
+		}
 		// Increase or decrease the speed
 		// Sensitive, but discrete
 		// This could be exactly the same as ShooterToggleMotor, but
@@ -223,6 +253,38 @@ public:
 
 		// We can actually read the motor speed and increase/decrease until
 		// we get to that speed
+	}
+
+	double targetSpeed = 0.3;
+	double setSpeed = 0;
+	double pastError = 0;
+	double kP = 0.1;
+	double kD = 0.05;
+	void AutoSpeed() {
+		double actualSpeed;
+		double motorspeed;
+		double errorSpeed;
+
+		motorspeed = RF_motor.GetSpeed();
+		SmartDashboard::PutNumber ("Speed test", motorspeed);
+		actualSpeed = (-motorspeed-20)/500;
+		errorSpeed = (targetSpeed-actualSpeed);
+
+		setSpeed = setSpeed + errorSpeed*kP + (errorSpeed - pastError)*kD;
+
+		if (setSpeed>1)
+		{
+			setSpeed = 1;
+		}
+		if (setSpeed<0)
+		{
+			setSpeed = 0;
+		}
+		RF_motor.Set(setSpeed);
+		pastError = errorSpeed;
+		SmartDashboard::PutNumber ("actual Speed", actualSpeed);
+		SmartDashboard::PutNumber ("set Speed", setSpeed);
+		SmartDashboard::PutNumber ("target Speed", targetSpeed);
 	}
 
 	void ShooterChangeAzimuth(int ShooterDirection) {
@@ -352,16 +414,19 @@ public:
 		}
 	void AutonomousInit() override {
 		autoSelected = chooser.GetSelected();
-		// std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
+		std::string autoSelected = SmartDashboard::GetString("Auto Selector", autoNameDefault);
 		std::cout << "Auto selected: " << autoSelected << std::endl;
-		timr=0; //Making the timer = to 0
-		ahrs->ZeroYaw(); //Setting current angle to zero
 		if (autoSelected == autoNameCustom) {
 			// Custom Auto goes here
 		} else {
 			// Default Auto goes here
 		}
-		/*
+		ahrs->ZeroYaw();
+
+
+		/*timr=0; //Making the timer = to 0
+		ahrs->ZeroYaw(); //Setting current angle to zero
+
 		SmartDashboard::PutNumber("timr1", 87);
 		SmartDashboard::PutNumber("timr2", 100);
 		SmartDashboard::PutNumber("timr3", 300);
@@ -369,22 +434,16 @@ public:
 		SmartDashboard::PutNumber("Forward 1 Speed", .2);
 		SmartDashboard::PutNumber("AngleSloop", 2);
 		SmartDashboard::PutNumber("MinSpeed", 0.13);
-		*/ //SmartDashboard::PutNumber("timr4", 310);
-		//SmartDashboard::PutNumber("mastertimr", 400);
+		SmartDashboard::PutNumber("timr4", 310);
+		SmartDashboard::PutNumber("mastertimr", 400);
 		SmartDashboard::PutNumber("Place", 1);
-		//SmartDashboard::PutNumber("timr21", 30);
-		SmartDashboard::PutNumber("Forward 2 Speed", .3);
-
+		SmartDashboard::PutNumber("timr21", 30);
+	 	SmartDashboard::PutNumber("Forward  Speed", .3);
+		SmartDashboard::PutNumber("Forward 1 Speed", .2);*/
 	}
 
 	void AutonomousPeriodic() {
-		double motorspeed;
-		//LF_motor.Set(0.3);
-		RF_motor.Set(0.3);
-		//RR_motor.Set(0.3);
-		//LR_motor.Set(0.3);
-		motorspeed = RF_motor.GetSpeed();
-		SmartDashboard::PutNumber("Speed test", motorspeed);
+
 		/*
 		int Place=SmartDashboard::GetNumber("Place", 2);
 		int timr21=SmartDashboard::GetNumber("timr21", 42);
@@ -398,8 +457,9 @@ public:
 		float CurrentAngle, AngleDiff, Speed;
 		float MinSpeed=SmartDashboard::GetNumber("MinSpeed", 0.13); //Minimum speed we can slow to when turning
 		CurrentAngle = ahrs->GetYaw(); //Getting what angle we are at
+		SmartDashboard::PutNumber(  "CurrentAngle", CurrentAngle);
 		SmartDashboard::PutNumber(  "IMU_Yaw",              ahrs->GetYaw()); //Gets yaw from the gyroscope
-		SmartDashboard::PutNumber(  "CurrentAngle", CurrentAngle); //Putting our current angle into smart dash-board
+ //Putting our current angle into smart dash-board
 		float ZeroAngle=0;
 		float AngleDiff2;
 		AngleDiff2 = CurrentAngle - ZeroAngle;
@@ -552,15 +612,14 @@ public:
 	}
 
 	void TeleopInit() {
-		ahrs->ZeroYaw();
 	}
 
 	void TeleopPeriodic() {
-		float CurrentAngle;
+		// ------------------------------------------------------
+		// Driving
+		// ------------------------------------------------------
 
-		CurrentAngle = ahrs->GetYaw();
-		SmartDashboard::PutNumber(  "CurrentAngle", CurrentAngle);
-		double NoMove=0.2;
+		// Used for controlling teleop speed buttons; slow and fast buttons;
 		if (controller1.GetRawButton(iJoystickFast_)){
 			teleMaxSpeed=1;
 		}
@@ -571,21 +630,40 @@ public:
 		{
 			teleMaxSpeed=0.5;
 		}
+
+		// Defines controller input for driving functions
 		double joystickX = controller1.GetRawAxis(iJoystickX_);
 		double joystickY = controller1.GetRawAxis(iJoystickY_);
 		double joystickRot = controller1.GetRawAxis(iJoystickRotate_);
 
-		if (fabs(joystickX)<NoMove){
+		// If the controller has a super small input this block of code won't count it.
+		double NoMove=0.2;
+		if (fabs(joystickX) < NoMove){
 			joystickX = 0.0;
 		}
-		if (fabs(joystickY)<NoMove){
+		if (fabs(joystickY) < NoMove){
 			joystickY=0;
 		}
 
-		if (fabs(joystickRot)<NoMove){
+		if (fabs(joystickRot) < NoMove){
 			joystickRot=0;
 		}
 
+		//MecDrive(joystickX, -joystickY, joystickRot);
+
+		// ------------------------------------------------------
+		// Shooting
+		// ------------------------------------------------------
+
+		// Used for changing the speed on the current shooter, not using closed loop
+		ShooterChangeMotorSpeed();
+		RF_motor.Set(-shootSpeed);
+
+		// ------------------------------------------------------
+		// Gear Arm
+		// ------------------------------------------------------
+
+		// Used for controlling the variable for the pneumatic gear arm
 		if (controller1.GetRawButton(iJoystickArm))
 		{
 			armMoving=true;
@@ -594,13 +672,9 @@ public:
 			armMoving=false;
 		}
 
-		SmartDashboard::PutBoolean("Move Arm", armMoving);
-
 		MoveArm(armMoving);
-		//DriveForward(controller1.GetRawAxis(iJoystickY_));
-		//RotateRight(controller1.GetRawAxis(iJoystickRotate_));
-		//DriveRight(controller1.GetRawAxis(iJoystickX_));
-		MecDrive(joystickX, -joystickY, joystickRot);
+
+		DisplayRobotStatus();
 	}
 
 	void TestPeriodic() {
